@@ -1,15 +1,17 @@
 import abc
 import ast
 import inspect
-from typing import Any
+from typing import Any, Callable
 
 from MindApi.builtin import Jump, MetaInstruction, Operation, Set
 from MindApi.extension import PythonBuiltIn
 
 
 class CodeConvert(ast.NodeVisitor):
-    def __init__(self):
+    def __init__(self, cls):
+        self.cls = cls
         self._instructions: list[MetaInstruction] = []
+        self._fn_list: dict[str, list[MetaInstruction]] = {}
 
     # utility functions
     def push(self, instruction: MetaInstruction):
@@ -23,8 +25,28 @@ class CodeConvert(ast.NodeVisitor):
             print(f"{i}: {inst}")
 
     def mlog(self) -> str:
+        print("\n")
         self.print_instructions()
         return "\n".join([str(i) for i in self._instructions])
+
+    def fn_code_process(self, fn: Callable) -> ast.AST:
+        fn_code = pre_process(fn)
+        # var name isolation
+        fn_ast = ast.parse(fn_code)
+
+        class FnVarNameIsolation(ast.NodeTransformer):
+            def visit_Call(self, node: ast.Call) -> ast.Call:
+                for arg in node.args:
+                    self.visit(arg)
+                return node
+
+            def visit_Name(self, node: ast.Name) -> ast.Name:
+                if node.id.startswith("__"):
+                    return node
+                node.id = f"__{fn.__name__}_{node.id}"
+                return node
+
+        return FnVarNameIsolation().visit(fn_ast)
 
     def visit_Constant(self, node: ast.Constant) -> Any:
         if node.value is True:
@@ -179,18 +201,66 @@ class CodeConvert(ast.NodeVisitor):
         if not isinstance(node.func, ast.Name):
             raise NotImplementedError(f"Call to {type(node.func)} is not supported")
         func_name = self.visit(node.func)
-        try:
-            func = getattr(PythonBuiltIn, func_name)
-            func_inst = func(node.args)
-            for i in func_inst:
-                self.push(i)
-        except AttributeError:
-            raise ValueError(f"Invalid function name: {func_name}")
+        if func_name.startswith("__"):
+            try:
+                func = getattr(self.cls, func_name[2:])
+                func_ast = self.fn_code_process(func)
+                func_convert = CodeConvert(self.cls)
+                func_convert.visit(func_ast)
+                if not isinstance(func_convert._instructions[-1], Jump):
+                    func_convert.push(
+                        Jump("1", ast.Eq().__class__.__name__, "1", "__jumpback")
+                    )
+                self._fn_list[func_name] = func_convert._instructions
+                for arg_value, arg_name in zip(
+                    node.args,
+                    func.__code__.co_varnames[1 : func.__code__.co_argcount],
+                ):
+                    if isinstance(arg_value, ast.Constant):
+                        self.push(Set(f"__{func.__name__}_{arg_name}", arg_value.value))
+                    elif isinstance(arg_value, ast.Name):
+                        self.push(Set(f"__{func.__name__}_{arg_name}", arg_value.id))
+                    else:
+                        raise NotImplementedError(
+                            f"Call with {type(arg_value)} is not supported"
+                        )
+
+                self.push(Set("__jumpback", len(self._instructions) + 2))
+                self.push(
+                    Jump("1", ast.Eq().__class__.__name__, "1", f"__remove_{func_name}")
+                )
+                self.push(Set("__remove", "__return"))
+                func_convert.mlog()
+            except AttributeError:
+                raise ValueError(f"Invalid function name: {func_name}")
+        else:
+            try:
+                func = getattr(PythonBuiltIn, func_name)
+                func_inst = func(node.args)
+                for i in func_inst:
+                    self.push(i)
+            except AttributeError:
+                raise ValueError(f"Invalid function name: {func_name}")
 
     def visit_AugAssign(self, node: ast.AugAssign):
         self.visit_Assign(
             ast.Assign([node.target], ast.BinOp(node.target, node.op, node.value))
         )
+
+    def visit_Return(self, node: ast.Return):
+        if node.value is None:
+            pass
+        else:
+            if isinstance(node.value, ast.Constant):
+                self.push(Set("__return", node.value.value))
+            elif isinstance(node.value, ast.Name):
+                self.push(Set("__return", node.value.id))
+            elif isinstance(node.value, ast.BinOp):
+                self.visit_BinOp(node.value)
+                binInst: Operation = self.pop()  # type: ignore
+                binInst.dest = "__return"
+                self.push(binInst)
+        self.push(Jump("1", ast.Eq().__class__.__name__, "1", "__jumpback"))
 
 
 class CPUTemplate(metaclass=abc.ABCMeta):
@@ -203,23 +273,22 @@ class CPUTemplate(metaclass=abc.ABCMeta):
         pass
 
 
-def compiler(cls: CPUTemplate):
-    def pre_process(fn) -> str:
-        # remove the 'def' from the source code
-        code = inspect.getsource(fn).split("\n")[1:-1]
-        # remove the indentation
-        indent = len(code[0]) - len(code[0].lstrip())
-        code = "\n".join([line[indent:] for line in code])  # type: ignore
-        # remove the 'self' argument
-        code = code.replace("self.", "")  # type: ignore
-        return code  # type: ignore
+def pre_process(fn) -> str:
+    # remove the 'def' from the source code
+    code = inspect.getsource(fn).split("\n")[1:-1]
+    # remove the indentation
+    indent = len(code[0]) - len(code[0].lstrip())
+    code = "\n".join([line[indent:] for line in code])  # type: ignore
+    # remove the 'self' argument
+    code = code.replace("self.", "__")  # type: ignore
+    return code  # type: ignore
 
+
+def compiler(cls: CPUTemplate):
     init, loop = pre_process(cls.init), pre_process(cls.loop)
-    print(f"{init} \n---------\n{loop}")
     init_ast, loop_ast = ast.parse(init), ast.parse(loop)
-    print(f"{ast.dump(init_ast)} \n---------\n{ ast.dump(loop_ast)}")
-    init = CodeConvert()  # type: ignore
-    loop = CodeConvert()  # type: ignore
+    init = CodeConvert(cls)  # type: ignore
+    loop = CodeConvert(cls)  # type: ignore
     init.visit(init_ast)  # type: ignore
     loop.visit(loop_ast)  # type: ignore
     init_mlog = init.mlog()  # type: ignore # noqa

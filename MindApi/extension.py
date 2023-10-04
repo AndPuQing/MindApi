@@ -3,7 +3,7 @@ from ast import Constant, Name, expr
 from typing import List
 
 from MindApi.builtin import Operation, Print, Set
-from MindApi.types import OperationType
+from MindApi.types import OperationType, UnitType
 
 
 class PythonBuiltIn(object):
@@ -188,3 +188,9 @@ class PythonBuiltIn(object):
             x = args[0].id if isinstance(args[0], Name) else args[0].value
             y = args[1].id if isinstance(args[1], Name) else args[1].value
             return [Operation("__remove", x, OperationType.Angle, y)]
+
+
+class Unit:
+    def __init__(self, unitType: UnitType, unitNum: int = 1) -> None:
+        self.unitType = unitType
+        self.unitNum = unitNum

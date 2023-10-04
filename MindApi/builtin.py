@@ -144,7 +144,7 @@ class Jump(MetaInstruction):
         left: str | float | int,
         op: str,
         right: str | float | int,
-        to: int,
+        to: int | str,
         reverse=True,
     ):
         self.left = left
@@ -197,3 +197,57 @@ class UnitBind(MetaInstruction):
 
     def __str__(self):
         return f"ubind @{self.unit_type}"
+
+
+class UnitControl(MetaInstruction):
+    def __init__(self, actiontype: str, *args):
+        self.actiontype = actiontype
+        self.args = args
+
+    def __str__(self):
+        args = list(self.args) + ["0"] * (5 - len(self.args))
+        return f"ucontrol {self.actiontype} {' '.join(args)}"
+
+
+class UnitRadar(MetaInstruction):
+    def __init__(
+        self,
+        dest: str,
+        targetclass1: str,
+        targetclass2: str,
+        targetclass3: str,
+        order: bool,
+        sort: str,
+    ):
+        self.dest = dest
+        self.targetclass1 = targetclass1
+        self.targetclass2 = targetclass2
+        self.targetclass3 = targetclass3
+        self.order = order
+        self.sort = sort
+
+    def __str__(self):
+        return f"uradar {self.targetclass1} {self.targetclass2} {self.targetclass3} {self.order} {self.sort} {self.dest}"
+
+
+class UnitLocate(MetaInstruction):
+    def __init__(
+        self,
+        outX: str,
+        outY: str,
+        Found: str,
+        building: str,
+        find: str,
+        group: str,
+        enemy: str,
+    ):
+        self.outX = outX
+        self.outY = outY
+        self.Found = Found
+        self.building = building
+        self.find = find
+        self.group = group
+        self.enemy = enemy
+
+    def __str__(self):
+        return f"ulocate {self.find} {self.group} {self.enemy} @copper {self.outX} {self.outY} {self.Found} {self.building}"
