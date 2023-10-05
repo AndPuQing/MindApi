@@ -39,7 +39,7 @@ jobs:
           WORKON_HOME: ~/.local/share/virtualenvs
           PIPENV_CACHE_DIR: ~/.local/share/pipcache
         if: steps.pipenv-cache.outputs.cache-hit != 'true'
-        run: pipenv install --deploy --dev
+        run: pipenv install --deploy --dev --ignore-pipfile
 
 
       - run: pipenv run isort --recursive --diff .
