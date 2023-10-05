@@ -15,6 +15,7 @@ from math import (
     sqrt,
     tan,
 )
+
 from .test_compiler import TestCase
 
 
@@ -38,7 +39,7 @@ class TestMath(TestCase):
         b = 2 / 2
         b = 2 // 2
         b = 2 % 2
-        b = 2 ** 2
+        b = 2**2
         b = 2 & 2
         b = 2 | 2
         b = 2 ^ 2

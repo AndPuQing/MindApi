@@ -1,8 +1,9 @@
 import abc
+from typing import Union
 
 from MindApi.types import MetaType, OperationType, UnitType
 from MindApi.utils import binary_ops, condition_ops, condition_ops_inverse
-from typing import Union
+
 
 class MetaInstruction(metaclass=abc.ABCMeta):
     @abc.abstractmethod

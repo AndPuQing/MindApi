@@ -1,13 +1,10 @@
 import abc
 import ast
 import inspect
-import pysnooper
-from typing import Any, Callable
+from typing import Any, Callable, List
 
 from MindApi.builtin import Jump, MetaInstruction, Operation, Set
 from MindApi.extension import PythonBuiltIn
-
-
 
 
 class CodeConvert(ast.NodeVisitor):
@@ -151,7 +148,7 @@ class CodeConvert(ast.NodeVisitor):
                     i.to = len(self._instructions) + 1
         elif isinstance(node.test, ast.Compare):
             self.visit_Compare(node.test)
-            binInst: Operation = self.pop()
+            binInst: Operation = self.pop()  # type: ignore
             self.push(Jump(binInst.left, binInst.op, binInst.right, -1))
             jumpIndex = len(self._instructions)
             for i in node.body:
@@ -225,7 +222,7 @@ class CodeConvert(ast.NodeVisitor):
                 self._fn_list[func_name] = func_convert._instructions
                 for arg_value, arg_name in zip(
                     node.args,
-                    func.__code__.co_varnames[1: func.__code__.co_argcount],
+                    func.__code__.co_varnames[1 : func.__code__.co_argcount],
                 ):
                     if isinstance(arg_value, ast.Constant):
                         self.push(Set(f"__{func.__name__}_{arg_name}", arg_value.value))
@@ -282,7 +279,6 @@ class CodeConvert(ast.NodeVisitor):
 
 
 class CPUTemplate(metaclass=abc.ABCMeta):
-
     @abc.abstractmethod
     def loop(self):
         pass
@@ -309,29 +305,31 @@ def convert(fn: Callable, cls: CPUTemplate) -> CodeConvert:
 
 def compiler(cls: CPUTemplate):
     function_map = {}
-    instructions = []
-    # if hasattr(cls, "__init__"):
-    #     init = getattr(cls, "__init__")
-    #     code = convert(init, cls)
-    #     function_map.update(code.fn_list)
-    #     instructions += code.instructions
+    instructions = List[MetaInstruction]
+    if hasattr(cls, "init"):
+        init = getattr(cls, "init")
+        code = convert(init, cls)
+        function_map.update(code.fn_list)
+        instructions += code.instructions
     if hasattr(cls, "loop"):
         loop = getattr(cls, "loop")
         code = convert(loop, cls)
         function_map.update(code.fn_list)
         # every jump instruction should be shifted
         for inst in code.instructions:
-            if isinstance(inst, Jump):
-                inst.to += len(instructions)
-        code.push(Jump("1", ast.Eq().__class__.__name__, "1", len(instructions))) # loop jump
+            if isinstance(inst, Jump) and isinstance(inst.to, int):
+                inst.to += len(instructions)  # type: ignore
+        code.push(
+            Jump("1", ast.Eq().__class__.__name__, "1", len(instructions))  # type: ignore
+        )  # loop jump
         instructions += code.instructions
     # process the function map
     index_map = {}
     for fn_name, fn_inst in function_map.items():
-        index_map[fn_name] = len(instructions)
-        instructions.append(fn_inst)
+        index_map[fn_name] = len(instructions)  # type: ignore
+        instructions += fn_inst
     # process the jump instruction
-    for inst in instructions:
+    for inst in instructions:  # type: ignore
         if isinstance(inst, Jump) and isinstance(inst.to, str):
             if inst.to.startswith("__remove_"):
                 inst.to = index_map[inst.to[9:]]

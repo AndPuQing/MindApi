@@ -27,3 +27,4 @@ class TestWhile(TestCase):
             self.a = 2
             break
         a = 1
+        print(a)
