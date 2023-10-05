@@ -1,6 +1,6 @@
 name: Test
 
-on: 
+on:
   pull_request: {}
   push:
     branches: main
@@ -27,3 +27,8 @@ jobs:
       - run: pipenv run flake8
       - run: pipenv run mypy
       - run: pipenv run pytest --cov --cov-fail-under=90
+
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          token: ${{ secrets.CODECOV_TOKEN }}
