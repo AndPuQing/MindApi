@@ -305,7 +305,7 @@ def convert(fn: Callable, cls: CPUTemplate) -> CodeConvert:
 
 def compiler(cls: CPUTemplate):
     function_map = {}
-    instructions = List[MetaInstruction]
+    instructions: List[MetaInstruction] = []
     if hasattr(cls, "init"):
         init = getattr(cls, "init")
         code = convert(init, cls)
