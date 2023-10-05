@@ -9,19 +9,37 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: [3.10.5]
+
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Python
+      - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
-          python-version: 3.10.5
-          cache: 'pipenv'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies with pipenv
-        run: |
-          pip install pipenv
-          pipenv install --deploy --dev
+        run: pip install pipenv
+        
+      - name: Cache Pipenv virtual environment
+        uses: actions/cache@v3
+        id: pipenv-cache
+        with:
+          path: ~/.local/share/virtualenvs
+          key: ${{ runner.os }}-pipenv-${{ hashFiles('**/Pipfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pipenv-
+
+      - name: Install dependencies
+        env:
+          PIPENV_NOSPIN: 'true'
+          WORKON_HOME: ~/.local/share/virtualenvs
+          PIPENV_CACHE_DIR: ~/.local/share/pipcache
+        if: steps.pipenv-cache.outputs.cache-hit != 'true'
+        run: pipenv install --deploy --dev
 
 
       - run: pipenv run isort --recursive --diff .
