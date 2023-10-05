@@ -16,9 +16,10 @@ from math import (
     tan,
 )
 
-from .test_compiler import TestCase
+from .test_compiler import Compiler, TestCase
 
 
+@Compiler()
 class TestMath(TestCase):
     def init(self):
         self.a = 1 + 1
@@ -60,6 +61,7 @@ class TestMath(TestCase):
         self.a %= 1
 
 
+@Compiler()
 class TestBuiltinMathFn(TestCase):
     def init(self):
         b = 1
@@ -71,7 +73,9 @@ class TestBuiltinMathFn(TestCase):
         # b = round(1, 2)
         # b = round(1, -2)
         b = max(1, 2)
+        b = max(b, b)
         b = min(1, 2)
+        b = min(1, b)
         # b = sum([1, 2])
         # b = sum([1, 2], 3)
         # # b = len([1, 2]) # TODO: support len
@@ -82,11 +86,14 @@ class TestBuiltinMathFn(TestCase):
         pass
 
 
+@Compiler()
 class TestMathFn(TestCase):
     def init(self):
         b = 1
         b = log(b)
+        b = log(1)
         b = log10(123)
+        b = log10(b)
         b = sqrt(1)
         b = exp(123)
         b = cos(b)

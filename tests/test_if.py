@@ -1,6 +1,7 @@
-from .test_compiler import TestCase
+from .test_compiler import Compiler, TestCase
 
 
+@Compiler()
 class TestIf(TestCase):
     def init(self):
         a = 1

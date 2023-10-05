@@ -1,6 +1,7 @@
-from .test_compiler import TestCase
+from .test_compiler import Compiler, TestCase
 
 
+@Compiler()
 class TestCall(TestCase):
     def fn(self):
         b = 2
@@ -17,6 +18,7 @@ class TestCall(TestCase):
         print("mindustry")
 
 
+@Compiler()
 class TestWithArgs(TestCase):
     def fn(self, a, b):
         b += b
@@ -28,11 +30,13 @@ class TestWithArgs(TestCase):
     def init(self):
         self.a = 1
         self.fn(1, 1)
+        self.fn(1, self.a)
 
     def loop(self):
         print("mindustry")
 
 
+@Compiler()
 class TestWithReturn(TestCase):
     def fn(self, a, b):
         return a
@@ -48,6 +52,7 @@ class TestWithReturn(TestCase):
         print("mindustry")
 
 
+@Compiler()
 class TestCallAssiginReturn(TestCase):
     def fn(self, a, b):
         return a

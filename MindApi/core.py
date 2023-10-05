@@ -1,4 +1,3 @@
-import abc
 import ast
 import inspect
 from typing import Any, Callable, List
@@ -25,6 +24,7 @@ class CodeConvert(ast.NodeVisitor):
             print(f"{i}: {inst}")
 
     def mlog(self) -> str:
+        self.print_instructions()
         return "\n".join([str(i) for i in self._instructions])
 
     def fn_code_process(self, fn: Callable) -> ast.AST:
@@ -41,7 +41,7 @@ class CodeConvert(ast.NodeVisitor):
             def visit_Name(self, node: ast.Name) -> ast.Name:
                 if node.id.startswith("__"):
                     return node
-                node.id = f"__{fn.__name__}_{node.id}"
+                node.id = f"__{fn.__name__}__{node.id}"
                 return node
 
         return FnVarNameIsolation().visit(fn_ast)
@@ -210,8 +210,9 @@ class CodeConvert(ast.NodeVisitor):
             raise NotImplementedError(f"Call to {type(node.func)} is not supported")
         func_name = self.visit(node.func)
         if func_name.startswith("__"):
+            func_name = func_name[2:]
             try:
-                func = getattr(self.cls, func_name[2:])
+                func = getattr(self.cls, func_name)
                 func_ast = self.fn_code_process(func)
                 func_convert = CodeConvert(self.cls)
                 func_convert.visit(func_ast)
@@ -235,7 +236,12 @@ class CodeConvert(ast.NodeVisitor):
 
                 self.push(Set("__jumpback", len(self._instructions) + 2))
                 self.push(
-                    Jump("1", ast.Eq().__class__.__name__, "1", f"__remove_{func_name}")
+                    Jump(
+                        "1",
+                        ast.Eq().__class__.__name__,
+                        "1",
+                        f"__remove_{func_name}",
+                    )
                 )
                 self.push(Set("__remove", "__return"))
             except AttributeError:
@@ -278,12 +284,6 @@ class CodeConvert(ast.NodeVisitor):
         return self._instructions
 
 
-class CPUTemplate(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def loop(self):
-        pass
-
-
 def pre_process(fn) -> str:
     # remove the 'def' from the source code
     code = inspect.getsource(fn).split("\n")[1:-1]
@@ -295,15 +295,15 @@ def pre_process(fn) -> str:
     return code  # type: ignore
 
 
-def convert(fn: Callable, cls: CPUTemplate) -> CodeConvert:
+def convert(fn: Callable, cls) -> CodeConvert:
     code = ast.parse(pre_process(fn))
     convert = CodeConvert(cls)
     convert.visit(code)
-    convert.print_instructions()
+    convert.mlog()
     return convert
 
 
-def compiler(cls: CPUTemplate):
+def compiler(cls):
     function_map = {}
     instructions: List[MetaInstruction] = []
     if hasattr(cls, "init"):
@@ -329,8 +329,11 @@ def compiler(cls: CPUTemplate):
         index_map[fn_name] = len(instructions)  # type: ignore
         instructions += fn_inst
     # process the jump instruction
-    for inst in instructions:  # type: ignore
+    for inst in instructions:
         if isinstance(inst, Jump) and isinstance(inst.to, str):
             if inst.to.startswith("__remove_"):
-                inst.to = index_map[inst.to[9:]]
+                inst.to = index_map[inst.to[9:]]  # type: ignore
+        if isinstance(inst, Set):
+            if inst.dest.startswith("__remove"):
+                instructions.remove(inst)
     return instructions

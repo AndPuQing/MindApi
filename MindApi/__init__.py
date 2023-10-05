@@ -1,3 +1,3 @@
-from MindApi.core import CPUTemplate, compiler
+from MindApi.core import compiler
 
-__all__ = ["compiler", "CPUTemplate"]
+__all__ = ["compiler"]
