@@ -4,7 +4,7 @@ from MindApi import CPUTemplate, compiler
 def test_call():
     @compiler
     class TEST_CPU(CPUTemplate):
-        def init(self):
+        def __init__(self):
             a = 1
             print(a)
             # print(f"what is it {a} asdf") # TODO: support f-string
@@ -25,7 +25,7 @@ def test_call_usedefince():
             print(b)
             print(self.a)
 
-        def init(self):
+        def __init__(self):
             self.a = 1
             self.fn()
 
@@ -43,7 +43,7 @@ def test_call_args():
             print(b)
             print(self.a)
 
-        def init(self):
+        def __init__(self):
             self.a = 1
             self.fn(1, 1)
 
@@ -60,7 +60,7 @@ def test_call_return():
             return a + b
             return a + b
 
-        def init(self):
+        def __init__(self):
             self.a = 1
             self.fn(1, 1)
 
@@ -77,7 +77,7 @@ def test_call_assigin_return():
             return a + b
             return a + b
 
-        def init(self):
+        def __init__(self):
             self.a = 1
             a = self.fn(1, 1)
             print(a)

@@ -25,8 +25,6 @@ class CodeConvert(ast.NodeVisitor):
             print(f"{i}: {inst}")
 
     def mlog(self) -> str:
-        print("\n")
-        self.print_instructions()
         return "\n".join([str(i) for i in self._instructions])
 
     def fn_code_process(self, fn: Callable) -> ast.AST:
@@ -148,7 +146,17 @@ class CodeConvert(ast.NodeVisitor):
             for i in self._instructions[jumpIndex:]:  # type: ignore
                 if isinstance(i, Jump) and i.to == -1:
                     i.to = len(self._instructions) + 1
-            self.push(Jump("1", ast.Eq().__class__.__name__, "1", jumpIndex - 1))
+        elif isinstance(node.test, ast.Compare):
+            self.visit_Compare(node.test)
+            binInst: Operation = self.pop()
+            self.push(Jump(binInst.left, binInst.op, binInst.right, -1))
+            jumpIndex = len(self._instructions)
+            for i in node.body:
+                self.visit(i)
+            self._instructions[jumpIndex - 1].to = len(self._instructions) + 1  # type: ignore
+        else:
+            raise NotImplementedError(f"While with {type(node.test)} is not supported")
+        self.push(Jump("1", ast.Eq().__class__.__name__, "1", jumpIndex - 1))
 
     def visit_Break(self, node: ast.Break):
         self.push(Jump("1", ast.Eq().__class__.__name__, "1", -1))
@@ -214,7 +222,7 @@ class CodeConvert(ast.NodeVisitor):
                 self._fn_list[func_name] = func_convert._instructions
                 for arg_value, arg_name in zip(
                     node.args,
-                    func.__code__.co_varnames[1 : func.__code__.co_argcount],
+                    func.__code__.co_varnames[1: func.__code__.co_argcount],
                 ):
                     if isinstance(arg_value, ast.Constant):
                         self.push(Set(f"__{func.__name__}_{arg_name}", arg_value.value))
@@ -230,7 +238,6 @@ class CodeConvert(ast.NodeVisitor):
                     Jump("1", ast.Eq().__class__.__name__, "1", f"__remove_{func_name}")
                 )
                 self.push(Set("__remove", "__return"))
-                func_convert.mlog()
             except AttributeError:
                 raise ValueError(f"Invalid function name: {func_name}")
         else:
@@ -262,6 +269,14 @@ class CodeConvert(ast.NodeVisitor):
                 self.push(binInst)
         self.push(Jump("1", ast.Eq().__class__.__name__, "1", "__jumpback"))
 
+    @property
+    def fn_list(self):
+        return self._fn_list
+
+    @property
+    def instructions(self):
+        return self._instructions
+
 
 class CPUTemplate(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -284,13 +299,44 @@ def pre_process(fn) -> str:
     return code  # type: ignore
 
 
+def convert(fn: Callable) -> CodeConvert:
+    code = ast.parse(pre_process(fn))
+    convert = CodeConvert(fn)
+    convert.visit(code)
+    convert.print_instructions()
+    return convert
+
+
 def compiler(cls: CPUTemplate):
-    init, loop = pre_process(cls.init), pre_process(cls.loop)
-    init_ast, loop_ast = ast.parse(init), ast.parse(loop)
-    init = CodeConvert(cls)  # type: ignore
-    loop = CodeConvert(cls)  # type: ignore
-    init.visit(init_ast)  # type: ignore
-    loop.visit(loop_ast)  # type: ignore
-    init_mlog = init.mlog()  # type: ignore # noqa
-    loop_mlog = loop.mlog()  # type: ignore # noqa
+    function_map = {}
+    instructions = []
+    if hasattr(cls, "__init__"):
+        init = getattr(cls, "__init__")
+        code = convert(init)
+        function_map.update(code.fn_list)
+        instructions += code.instructions
+    if hasattr(cls, "loop"):
+        loop = getattr(cls, "loop")
+        code = convert(loop)
+        function_map.update(code.fn_list)
+        # every jump instruction should be shifted
+        for inst in code.instructions:
+            if isinstance(inst, Jump):
+                inst.to += len(instructions)
+        code.push(Jump("1", ast.Eq().__class__.__name__, "1", len(instructions))) # loop jump
+        instructions += code.instructions
+    # process the function map
+    index_map = {}
+    for fn_name, fn_inst in function_map.items():
+        index_map[fn_name] = len(instructions)
+        instructions.append(fn_inst)
+    # process the jump instruction
+    for inst in instructions:
+        if isinstance(inst, Jump) and isinstance(inst.to, str):
+            if inst.to.startswith("__remove_"):
+                inst.to = index_map[inst.to[9:]]
+    # DEBUG
+    print("\n")
+    for i, inst in enumerate(instructions):
+        print(f"{i}: {inst}")
     return cls

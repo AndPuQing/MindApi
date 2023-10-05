@@ -4,7 +4,7 @@ from MindApi import CPUTemplate, compiler
 def test_if():
     @compiler
     class TEST_CPU(CPUTemplate):
-        def init(self):
+        def __init__(self):
             a = 1
             if a == 1:
                 a = 2

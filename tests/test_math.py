@@ -22,7 +22,7 @@ from MindApi import CPUTemplate, compiler
 def test_math():
     @compiler
     class TEST_CPU(CPUTemplate):
-        def init(self):
+        def __init__(self):
             self.a = 1 + 1
             self.a = 2
             self.a = 2
@@ -67,7 +67,7 @@ def test_math():
 def test_mathfn():
     @compiler
     class TEST_CPU(CPUTemplate):
-        def init(self):
+        def __init__(self):
             b = 1
             b = abs(1)
             # b = divmod(1, 2)
@@ -93,7 +93,7 @@ def test_mathfn():
 def test_Mathfn():
     @compiler
     class TEST_CPU(CPUTemplate):
-        def init(self):
+        def __init__(self):
             b = 1
             b = log(b)
             b = log10(123)
