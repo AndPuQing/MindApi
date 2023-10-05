@@ -2,7 +2,7 @@ import abc
 
 from MindApi.types import MetaType, OperationType, UnitType
 from MindApi.utils import binary_ops, condition_ops, condition_ops_inverse
-
+from typing import Union
 
 class MetaInstruction(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -81,7 +81,7 @@ class GetLink(MetaInstruction):
 
 # ---------Operations---------#
 class Set(MetaInstruction):
-    def __init__(self, dest: str, src: str | float | int) -> None:
+    def __init__(self, dest: str, src: Union[str, float, int]) -> None:
         self.dest = dest
         self.src = src
 
@@ -93,9 +93,9 @@ class Operation(MetaInstruction):
     def __init__(
         self,
         dest: str,
-        left: str | float | int,
-        op: OperationType | str,
-        right: str | float | int,
+        left: Union[str, float, int],
+        op: Union[OperationType, str],
+        right: Union[str, float, int],
     ) -> None:
         self.dest = dest
         self.left = left
@@ -141,10 +141,10 @@ class PackColor(MetaInstruction):
 class Jump(MetaInstruction):
     def __init__(
         self,
-        left: str | float | int,
+        left: Union[str, float, int],
         op: str,
-        right: str | float | int,
-        to: int | str,
+        right: Union[str, float, int],
+        to: Union[int, str],
         reverse=True,
     ):
         self.left = left
