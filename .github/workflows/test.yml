@@ -1,4 +1,4 @@
-name: Test
+name: Unit Test
 
 on:
   pull_request: {}
@@ -48,7 +48,17 @@ jobs:
       - run: pipenv run mypy
       - run: pipenv run pytest --cov --cov-fail-under=90
 
-      - name: Upload coverage report to Codecov
-        uses: codecov/codecov-action@v3
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Coveralls
+        uses: AndreMiras/coveralls-python-action@develop
+        with:
+          parallel: true
+          flag-name: Unit Test
+
+  coveralls_finish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Coveralls Finished
+      uses: AndreMiras/coveralls-python-action@develop
+      with:
+        parallel-finished: true
