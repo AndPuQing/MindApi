@@ -1,10 +1,13 @@
 import abc
 import ast
 import inspect
+import pysnooper
 from typing import Any, Callable
 
 from MindApi.builtin import Jump, MetaInstruction, Operation, Set
 from MindApi.extension import PythonBuiltIn
+
+
 
 
 class CodeConvert(ast.NodeVisitor):
@@ -279,9 +282,6 @@ class CodeConvert(ast.NodeVisitor):
 
 
 class CPUTemplate(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def init(self):
-        pass
 
     @abc.abstractmethod
     def loop(self):
@@ -299,9 +299,9 @@ def pre_process(fn) -> str:
     return code  # type: ignore
 
 
-def convert(fn: Callable) -> CodeConvert:
+def convert(fn: Callable, cls: CPUTemplate) -> CodeConvert:
     code = ast.parse(pre_process(fn))
-    convert = CodeConvert(fn)
+    convert = CodeConvert(cls)
     convert.visit(code)
     convert.print_instructions()
     return convert
@@ -310,14 +310,14 @@ def convert(fn: Callable) -> CodeConvert:
 def compiler(cls: CPUTemplate):
     function_map = {}
     instructions = []
-    if hasattr(cls, "__init__"):
-        init = getattr(cls, "__init__")
-        code = convert(init)
-        function_map.update(code.fn_list)
-        instructions += code.instructions
+    # if hasattr(cls, "__init__"):
+    #     init = getattr(cls, "__init__")
+    #     code = convert(init, cls)
+    #     function_map.update(code.fn_list)
+    #     instructions += code.instructions
     if hasattr(cls, "loop"):
         loop = getattr(cls, "loop")
-        code = convert(loop)
+        code = convert(loop, cls)
         function_map.update(code.fn_list)
         # every jump instruction should be shifted
         for inst in code.instructions:
@@ -335,8 +335,4 @@ def compiler(cls: CPUTemplate):
         if isinstance(inst, Jump) and isinstance(inst.to, str):
             if inst.to.startswith("__remove_"):
                 inst.to = index_map[inst.to[9:]]
-    # DEBUG
-    print("\n")
-    for i, inst in enumerate(instructions):
-        print(f"{i}: {inst}")
-    return cls
+    return instructions
