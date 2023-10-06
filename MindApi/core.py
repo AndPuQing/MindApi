@@ -5,6 +5,8 @@ from typing import Any, Callable, List
 from MindApi.builtin import Jump, MetaInstruction, Operation, Set
 from MindApi.extension import PythonBuiltIn
 
+SHOULD_REMOVE = "__remove"  # It signals that the instruction should be removed
+
 
 class CodeConvert(ast.NodeVisitor):
     def __init__(self, cls):
@@ -105,7 +107,7 @@ class CodeConvert(ast.NodeVisitor):
             raise NotImplementedError("Multiple boolean operations are not supported")
         left = self.visit(node.values[0])
         right = self.visit(node.values[1])
-        dest = "__remove"
+        dest = SHOULD_REMOVE
         op = node.op.__class__.__name__
         self.push(Operation(dest, left, op, right))
 
@@ -117,9 +119,9 @@ class CodeConvert(ast.NodeVisitor):
                 f"Unary operation on {type(node.operand)} is not supported"
             )
         operand = self.visit(node.operand)
-        dest = "__remove"
+        dest = SHOULD_REMOVE
         op = node.op.__class__.__name__
-        self.push(Operation(dest, "__remove", op, operand))
+        self.push(Operation(dest, SHOULD_REMOVE, op, operand))
 
     def visit_BinOp(self, node: ast.BinOp):
         if isinstance(node.left, ast.BinOp) or isinstance(
@@ -128,23 +130,25 @@ class CodeConvert(ast.NodeVisitor):
             raise NotImplementedError("Nested binary operations are not supported")
         left = self.visit(node.left)
         right = self.visit(node.right)
-        dest = "__remove"
+        dest = SHOULD_REMOVE
         op = node.op.__class__.__name__
         self.push(Operation(dest, left, op, right))
 
     def visit_While(self, node: ast.While):
         if isinstance(node.test, ast.Constant) or isinstance(node.test, ast.Name):
             self.visit_Compare(ast.Compare(node.test, [ast.Eq()], [ast.Constant(1)]))
+
             # transform the jump instruction
             binInst: Operation = self.pop()  # type: ignore
-            self.push(Jump(binInst.left, binInst.op, binInst.right, -1))
+            self.push(Jump(binInst.left, binInst.op, binInst.right, SHOULD_REMOVE))
             jumpIndex = len(self._instructions)
             for i in node.body:
                 self.visit(i)
             self._instructions[jumpIndex - 1].to = len(self._instructions) + 1  # type: ignore
+
             # fill the break instruction
             for i in self._instructions[jumpIndex:]:  # type: ignore
-                if isinstance(i, Jump) and i.to == -1:
+                if isinstance(i, Jump) and i.to == SHOULD_REMOVE:
                     i.to = len(self._instructions) + 1
         elif isinstance(node.test, ast.Compare):
             self.visit_Compare(node.test)
@@ -156,18 +160,22 @@ class CodeConvert(ast.NodeVisitor):
             self._instructions[jumpIndex - 1].to = len(self._instructions) + 1  # type: ignore
         else:
             raise NotImplementedError(f"While with {type(node.test)} is not supported")
-        self.push(Jump("1", ast.Eq().__class__.__name__, "1", jumpIndex - 1))
+
+        self.push(
+            Jump("1", ast.Eq().__class__.__name__, "1", jumpIndex - 1)
+        )  # jump to the beginning of the loop
 
     def visit_Break(self, node: ast.Break):
-        self.push(Jump("1", ast.Eq().__class__.__name__, "1", -1))
+        self.push(Jump("1", ast.Eq().__class__.__name__, "1", SHOULD_REMOVE))
 
     def visit_If(self, node: ast.If):
         if not isinstance(node.test, ast.Compare):
             raise NotImplementedError(f"If with {type(node.test)} is not supported")
         self.visit_Compare(node.test)
+
         # transform the jump instruction
         binInst: Operation = self.pop()  # type: ignore
-        self.push(Jump(binInst.left, binInst.op, binInst.right, -1))
+        self.push(Jump(binInst.left, binInst.op, binInst.right, SHOULD_REMOVE))
         jumpIndex = len(self._instructions)
         for i in node.body:
             self.visit(i)
@@ -192,7 +200,7 @@ class CodeConvert(ast.NodeVisitor):
             raise NotImplementedError(
                 f"Comparison with {type(node.comparators[0])} is not supported"
             )
-        self.push(Operation("__remove", left, op, self.visit(node.comparators[0])))
+        self.push(Operation(SHOULD_REMOVE, left, op, self.visit(node.comparators[0])))
 
     def visit_Pass(self, node: ast.Pass):
         pass
@@ -209,18 +217,23 @@ class CodeConvert(ast.NodeVisitor):
         if not isinstance(node.func, ast.Name):
             raise NotImplementedError(f"Call to {type(node.func)} is not supported")
         func_name = self.visit(node.func)
-        if func_name.startswith("__"):
+        if func_name.startswith("__"):  # user defined function in the class
             func_name = func_name[2:]
             try:
                 func = getattr(self.cls, func_name)
                 func_ast = self.fn_code_process(func)
                 func_convert = CodeConvert(self.cls)
                 func_convert.visit(func_ast)
-                if not isinstance(func_convert._instructions[-1], Jump):
+                if not isinstance(
+                    func_convert._instructions[-1], Jump
+                ):  # if the last instruction is not a jump instruction, add a jump instruction to jump back
                     func_convert.push(
                         Jump("1", ast.Eq().__class__.__name__, "1", "__jumpback")
                     )
                 self._fn_list[func_name] = func_convert._instructions
+
+                # Below is the code to transform the function arguments
+                # The function arguments are stored in the "__{func_name}_{arg_name}" variables
                 for arg_value, arg_name in zip(
                     node.args,
                     func.__code__.co_varnames[1 : func.__code__.co_argcount],
@@ -234,16 +247,25 @@ class CodeConvert(ast.NodeVisitor):
                             f"Call with {type(arg_value)} is not supported"
                         )
 
+                # Because the function may be called multiple times
+                # So we need a "__jumpback" variable to jump back to
+                # the raw function
                 self.push(Set("__jumpback", len(self._instructions) + 2))
+
+                # The function will append to the last instruction,
+                # so we need "__remove_{func_name}" to label the function position
+                # At the end, we will fill the fn position according to the label
                 self.push(
                     Jump(
                         "1",
                         ast.Eq().__class__.__name__,
                         "1",
-                        f"__remove_{func_name}",
+                        f"{SHOULD_REMOVE}_{func_name}",
                     )
                 )
-                self.push(Set("__remove", "__return"))
+                # Accept the return value, if the caller does not accept the return
+                # value, it will be removed
+                self.push(Set(SHOULD_REMOVE, "__return"))
             except AttributeError:
                 raise ValueError(f"Invalid function name: {func_name}")
         else:
@@ -323,17 +345,19 @@ def compiler(cls):
             Jump("1", ast.Eq().__class__.__name__, "1", len(instructions))  # type: ignore
         )  # loop jump
         instructions += code.instructions
+
     # process the function map
     index_map = {}
     for fn_name, fn_inst in function_map.items():
         index_map[fn_name] = len(instructions)  # type: ignore
         instructions += fn_inst
-    # process the jump instruction
+    # process the jump instruction(fill the function jump position)
     for inst in instructions:
         if isinstance(inst, Jump) and isinstance(inst.to, str):
             if inst.to.startswith("__remove_"):
                 inst.to = index_map[inst.to[9:]]  # type: ignore
-        if isinstance(inst, Set):
-            if inst.dest.startswith("__remove"):
-                instructions.remove(inst)
+        if (
+            isinstance(inst, Set) and inst.src == "__return"
+        ):  # remove the return value if it is not used
+            instructions.remove(inst)
     return instructions
